@@ -1,0 +1,128 @@
+{
+  "name": "FlowGuard AI - Incident Response Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flowguard-alert",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1e5a2a22-38d7-4b72-881b-df0e3b97b0a1",
+      "name": "Webhook: Receive Anomaly Alert",
+      "webhookId": "flowguard-alert"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and format incoming security anomaly details\nconst data = $input.first().json;\n\nconst timestamp = data.timestamp || new Date().toISOString();\nconst formattedDate = new Date(timestamp).toLocaleString('en-US', {\n  timeZoneName: 'short',\n  hour12: true\n});\n\nconst confidence = data.confidence_score \n  ? `${Math.round(data.confidence_score * 100)}%` \n  : '95%';\n\nreturn [{\n  json: {\n    anomaly_type: (data.anomaly_type || 'tailgating').toUpperCase(),\n    camera_id: data.camera_id || 'Gate_04_Demo',\n    confidence_score: data.confidence_score || 0.95,\n    confidence_percent: confidence,\n    timestamp: timestamp,\n    formatted_time: formattedDate,\n    snapshot_url: data.snapshot_url || 'https://via.placeholder.com/640x480?text=No+Snapshot+Available',\n    severity: 'HIGH',\n    alert_title: '🚨 SECURITY ALERT: TAILGATING DETECTED'\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "id": "2b8a3b33-49e8-4c83-992c-ef1f4c08c1b2",
+      "name": "Format Incident Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Set Webhook URLs\"].json[\"discord_webhook_url\"] || \"https://discord.com/api/webhooks/YOUR_DISCORD_WEBHOOK_URL_HERE\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"username\": \"FlowGuard AI Sentinel\",\n  \"avatar_url\": \"https://cdn-icons-png.flaticon.com/512/3233/3233497.png\",\n  \"embeds\": [\n    {\n      \"title\": \"🚨 SECURITY ALERT: TAILGATING DETECTED\",\n      \"description\": \"An unauthorized multiple-entry tailgating event was flagged in real-time by edge computer vision.\",\n      \"color\": 15548997,\n      \"fields\": [\n        {\n          \"name\": \"📍 Checkpoint Camera\",\n          \"value\": \"`\" + $json.camera_id + \"`\",\n          \"inline\": true\n        },\n        {\n          \"name\": \"🎯 AI Confidence\",\n          \"value\": \"**\" + $json.confidence_percent + \"**\",\n          \"inline\": true\n        },\n        {\n          \"name\": \"⚠️ Severity\",\n          \"value\": \"🔴 **\" + $json.severity + \"**\",\n          \"inline\": true\n        },\n        {\n          \"name\": \"⏰ Detection Time\",\n          \"value\": $json.formatted_time,\n          \"inline\": false\n        }\n      ],\n      \"image\": {\n        \"url\": $json.snapshot_url\n      },\n      \"footer\": {\n        \"text\": \"FlowGuard AI • Autonomous Transit Security System\"\n      },\n      \"timestamp\": $json.timestamp\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        -100
+      ],
+      "id": "3c9b4c44-5af9-4d94-aa3d-fa205d19d2c3",
+      "name": "Option A: Dispatch Discord Card"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node[\"Set Webhook URLs\"].json[\"slack_webhook_url\"] || \"https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK_URL\" }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"🚨 *FlowGuard AI Alert:* Tailgating detected at \" + $json.camera_id,\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"🚨 FlowGuard AI Security Alert: Tailgating Detected\",\n        \"emoji\": true\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Camera ID:*\\n`\" + $json.camera_id + \"`\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Severity:*\\n🔴 *HIGH*\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Confidence:*\\n\" + $json.confidence_percent\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Detection Time:*\\n\" + $json.formatted_time\n        }\n      ]\n    },\n    {\n      \"type\": \"image\",\n      \"title\": {\n        \"type\": \"plain_text\",\n        \"text\": \"Evidence Snapshot (Gate_04_Demo)\"\n      },\n      \"image_url\": $json.snapshot_url,\n      \"alt_text\": \"Tailgating snapshot\"\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"✅ Acknowledge Alert\"\n          },\n          \"style\": \"primary\",\n          \"value\": \"acknowledge\"\n        },\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"👮 Dispatch Transit Officer\"\n          },\n          \"style\": \"danger\",\n          \"value\": \"dispatch_officer\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        120
+      ],
+      "id": "4d0c5d55-6ba0-4e05-bb4e-0b316e2ae3d4",
+      "name": "Option B: Dispatch Slack BlockKit Card"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Receive Anomaly Alert": {
+      "main": [
+        [
+          {
+            "node": "Format Incident Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Incident Data": {
+      "main": [
+        [
+          {
+            "node": "Option A: Dispatch Discord Card",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Option B: Dispatch Slack BlockKit Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f78d6b9a-1122-4433-8899-001122334455",
+  "meta": {
+    "instanceId": "flowguard-ai-instance"
+  },
+  "id": "FlowGuard_Incident_Pipeline",
+  "tags": []
+}
